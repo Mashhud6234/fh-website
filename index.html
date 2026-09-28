@@ -791,16 +791,26 @@ const EMAILJS = { publicKey: "DEgcZ3nNjzMiEiBBy", serviceId: "service_60y63su", 
 async function sendConfirmationEmail(o){
   const note=document.getElementById('doneMail');
   if(!EMAILJS.publicKey||!EMAILJS.serviceId||!EMAILJS.templateId){ if(note) note.textContent=''; return; }
-  try{
-    if(!window.emailjs){ await loadScript('https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js'); emailjs.init({publicKey:EMAILJS.publicKey}); }
-    await emailjs.send(EMAILJS.serviceId, EMAILJS.templateId, {
+  const params={
       to_email:o.email, to_name:o.name, order_id:o.id,
       order_date:new Date(o.createdAt).toLocaleString('en-PK',{dateStyle:'medium',timeStyle:'short'}),
       order_items:o.items.map(i=>`${i.name} × ${i.qty} = ${fmt(i.price*i.qty)}`).join('\n'),
       subtotal:fmt(o.subtotal), delivery:fmt(o.delivery), total:fmt(o.total), payment:o.payment,
-      phone:o.phone, address:o.address+', '+o.city });
-    if(note) note.textContent=`✓ A confirmation email has been sent to ${o.email}. Please also check your spam folder.`;
-  }catch(err){ console.warn('email',err); if(note) note.textContent='Your order is saved. We couldn’t send the confirmation email right now, but we’ll confirm your order by phone.'; }
+      phone:o.phone, address:o.address+', '+o.city };
+  /* direct call to EmailJS (no extra script to download), tried up to 3 times */
+  let lastErr='';
+  for(let attempt=1; attempt<=3; attempt++){
+    try{
+      const res=await fetch('https://api.emailjs.com/api/v1.0/email/send',{method:'POST', headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({service_id:EMAILJS.serviceId, template_id:EMAILJS.templateId, user_id:EMAILJS.publicKey, template_params:params})});
+      if(res.ok){ if(note) note.textContent=`✓ A confirmation email has been sent to ${o.email}. If you don’t see it in a few minutes, please check your Spam or Promotions folder.`; return; }
+      lastErr=res.status+' '+(await res.text().catch(()=>''));
+      if(res.status>=400 && res.status<500 && res.status!==429) break;
+    }catch(err){ lastErr=String(err&&err.message||err); }
+    await new Promise(r=>setTimeout(r,1500*attempt));
+  }
+  console.warn('email failed',lastErr);
+  if(note) note.textContent='Your order is saved. We couldn’t send the confirmation email right now, but we’ll confirm your order by phone or WhatsApp.';
 }
 let pendingClear=false;
 function clearAfterSend(){ if(!pendingClear) return; pendingClear=false; bag=[]; renderBag(); document.getElementById('checkout').reset(); renderSum(); }
@@ -847,7 +857,7 @@ document.getElementById('checkout').addEventListener('submit',async e=>{
     name:f.coName.value.trim(), phone:f.coPhone.value.trim(), city:f.coCity.value.trim(), address:f.coAddress.value.trim(),
     items:bag.map(b=>({name:b.name, price:b.price, qty:b.qty})), subtotal:bagTotal(), delivery:shipFee()||0, total:bagTotal()+(shipFee()||0),
     payment:'Cash on Delivery', status:'new' };
-  const email=(f.coEmail.value||'').trim();
+  const email=(f.coEmail.value||'').trim().toLowerCase(); f.coEmail.value=email;
   if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){ msg.textContent= email ? 'Please check your email address.' : 'Please enter your email so we can send your order confirmation.'; f.coEmail.focus(); return; }
   if(email) order.email=email;
   /* every copy of the site (live site and preview) saves to Firebase, else WhatsApp */
@@ -862,7 +872,10 @@ document.getElementById('checkout').addEventListener('submit',async e=>{
       btn.disabled=false;
     }
     sendWhatsApp(order, saved);
-    if(saved && order.email) sendConfirmationEmail(order);
+    if(order.email){
+      if(saved) sendConfirmationEmail(order);
+      else { let mailed=false; document.getElementById('waSend')?.addEventListener('click',()=>{ if(!mailed){ mailed=true; document.getElementById('doneMail').textContent=`Sending a confirmation email to ${order.email}…`; sendConfirmationEmail(order); } }); }
+    }
     if(saved){ bag=[]; renderBag(); f.reset(); renderSum(); } else { pendingClear=true; }
     return;
   }
