@@ -325,6 +325,13 @@ footer ul{list-style:none; padding:0; margin:0; display:grid; gap:6px}
 .sum small{color:var(--ink2)}
 .sum .grand{border-top:1px solid var(--line); padding-top:8px; font-size:18px}
 .sum .grand b{font-family:var(--pop)}
+.receipt{width:100%; background:var(--washi); border:1px dashed var(--line); border-radius:12px; padding:14px 16px; font-size:14px}
+.receipt:empty{display:none}
+.rc-h{display:flex; justify-content:space-between; gap:10px; flex-wrap:wrap; border-bottom:1px solid var(--line); padding-bottom:8px; margin-bottom:6px}
+.rc-h span{color:var(--ink2); font-size:13px}
+.rc-r{display:flex; justify-content:space-between; gap:12px; padding:3px 0; font-variant-numeric:tabular-nums}
+.rc-t{border-top:1px solid var(--line); margin-top:6px; padding-top:8px; font-weight:800}
+.wabtn{display:inline-block; margin-top:6px; font-size:12px; font-weight:700; color:#fff; background:#1f8a4c; border-radius:999px; padding:4px 10px; text-decoration:none; white-space:nowrap}
 .hint{font-size:12px; color:var(--ink2); margin-top:-2px}
 .li .rm{border:0; background:none; color:var(--ink2); font-size:13px; text-decoration:underline; padding:2px 0 0; display:block}
 .li .rm:hover{color:#b3261e}
@@ -581,6 +588,7 @@ tr.fresh{animation:fresh 2.5s ease}
         <div class="eyebrow">Delivery details</div>
         <label for="coName">Full name</label><input id="coName" name="coName" required autocomplete="name">
         <label for="coPhone">Phone / WhatsApp</label><input id="coPhone" name="coPhone" required inputmode="tel" maxlength="16" placeholder="03XX XXXXXXX" autocomplete="tel" aria-describedby="phoneHint"><small id="phoneHint" class="hint">Pakistani mobile number, e.g. 0326 9505730</small>
+        <label for="coEmail">Email <span style="font-weight:500;color:var(--ink2)">(optional, for your order confirmation)</span></label><input id="coEmail" name="coEmail" type="email" maxlength="100" placeholder="you@example.com" autocomplete="email">
         <label for="coCity">City</label><select id="coCity" name="coCity" required><option value="">Choose your city</option></select>
         <label for="coAddress">Address</label><textarea id="coAddress" name="coAddress" rows="3" required autocomplete="street-address"></textarea>
         <p class="cod"><b>Payment:</b> Cash on Delivery. Pay when your order arrives.</p>
@@ -594,6 +602,8 @@ tr.fresh{animation:fresh 2.5s ease}
       <h3 id="doneTitle">Order placed</h3>
       <p>Your order number is <b id="doneId"></b>. We'll call you on <b id="donePhone"></b> to confirm it.</p>
       <p id="donePay"></p>
+      <div class="receipt" id="doneReceipt"></div>
+      <p class="hint" id="doneMail" role="status"></p>
       <button type="button" class="btn" onclick="document.getElementById('drawer').hidden=true">Keep shopping</button>
     </div>
   </aside>
@@ -769,6 +779,23 @@ document.getElementById('coCity').addEventListener('change',renderSum);
 
 /* WhatsApp ordering (used when no database is connected, e.g. on Vercel) */
 const WHATSAPP_NUMBER='923269505730';
+/* ===== Order confirmation email (EmailJS) =====
+   Fill these three values from your EmailJS account to switch on confirmation emails. */
+const EMAILJS = { publicKey: null, serviceId: null, templateId: null };
+async function sendConfirmationEmail(o){
+  const note=document.getElementById('doneMail');
+  if(!EMAILJS.publicKey||!EMAILJS.serviceId||!EMAILJS.templateId){ if(note) note.textContent=''; return; }
+  try{
+    if(!window.emailjs){ await loadScript('https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js'); emailjs.init({publicKey:EMAILJS.publicKey}); }
+    await emailjs.send(EMAILJS.serviceId, EMAILJS.templateId, {
+      to_email:o.email, to_name:o.name, order_id:o.id,
+      order_date:new Date(o.createdAt).toLocaleString('en-PK',{dateStyle:'medium',timeStyle:'short'}),
+      order_items:o.items.map(i=>`${i.name} × ${i.qty} = ${fmt(i.price*i.qty)}`).join('\n'),
+      subtotal:fmt(o.subtotal), delivery:fmt(o.delivery), total:fmt(o.total), payment:o.payment,
+      phone:o.phone, address:o.address+', '+o.city });
+    if(note) note.textContent=`✓ A confirmation email has been sent to ${o.email}. Please also check your spam folder.`;
+  }catch(err){ console.warn('email',err); if(note) note.textContent='Your order is saved. We couldn’t send the confirmation email right now, but we’ll confirm your order by phone.'; }
+}
 let pendingClear=false;
 function clearAfterSend(){ if(!pendingClear) return; pendingClear=false; bag=[]; renderBag(); document.getElementById('checkout').reset(); renderSum(); }
 function sendWhatsApp(o, saved){
@@ -781,6 +808,11 @@ function sendWhatsApp(o, saved){
   document.getElementById('donePhone').textContent=o.phone;
   document.getElementById('donePay').innerHTML=`${saved?'We’ve received your order. For faster confirmation you can also send it to us on WhatsApp.':'Tap below to send your order to us on WhatsApp.'}<span style="display:block; margin-top:14px"><a class="btn solid" id="waSend" href="${url}" target="_blank" rel="noopener">Send order on WhatsApp</a></span>${saved?'':'<small class="hint" style="display:block;margin-top:10px">Your bag stays saved until you send the order.</small>'}`;
   document.getElementById('waSend').addEventListener('click', clearAfterSend);
+  document.getElementById('doneReceipt').innerHTML = `<div class="rc-h"><b>Order ${esc(o.id)}</b><span>${new Date(o.createdAt).toLocaleString('en-PK',{dateStyle:'medium',timeStyle:'short'})}</span></div>`
+    + o.items.map(i=>`<div class="rc-r"><span>${esc(i.name)} × ${i.qty}</span><span>${fmt(i.price*i.qty)}</span></div>`).join('')
+    + `<div class="rc-r"><span>Delivery (${esc(o.city)})</span><span>${fmt(o.delivery)}</span></div><div class="rc-r rc-t"><span>Total · Cash on Delivery</span><span>${fmt(o.total)}</span></div>
+       <p class="hint" style="margin:10px 0 0">Tip: take a screenshot of this receipt for your records.</p>`;
+  document.getElementById('doneMail').textContent = saved && o.email ? `Sending a confirmation email to ${o.email}…` : '';
   document.getElementById('bagMain').hidden=true; document.getElementById('done').hidden=false;
 }
 
@@ -809,14 +841,21 @@ document.getElementById('checkout').addEventListener('submit',async e=>{
     name:f.coName.value.trim(), phone:f.coPhone.value.trim(), city:f.coCity.value.trim(), address:f.coAddress.value.trim(),
     items:bag.map(b=>({name:b.name, price:b.price, qty:b.qty})), subtotal:bagTotal(), delivery:shipFee()||0, total:bagTotal()+(shipFee()||0),
     payment:'Cash on Delivery', status:'new' };
+  const email=(f.coEmail.value||'').trim();
+  if(email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){ msg.textContent='Please check your email address, or leave it empty.'; f.coEmail.focus(); return; }
+  if(email) order.email=email;
   if(!db||!uid){
     let saved=false;
     if(FB.ready){
       btn.disabled=true; btn.textContent='Placing order…'; msg.textContent='';
-      try{ await FB.fs.collection('orders').doc(order.id).set(order); saved=true; }catch(err){ console.warn(err); }
+      try{ await FB.fs.collection('orders').doc(order.id).set(order); saved=true; }
+      catch(err){ console.warn(err);
+        if(order.email){ const o2={...order}; delete o2.email; try{ await FB.fs.collection('orders').doc(order.id).set(o2); saved=true; }catch(e2){ console.warn(e2); } }
+      }
       btn.disabled=false;
     }
     sendWhatsApp(order, saved);
+    if(saved && order.email) sendConfirmationEmail(order);
     if(saved){ bag=[]; renderBag(); f.reset(); renderSum(); } else { pendingClear=true; }
     return;
   }
@@ -862,6 +901,13 @@ function applyProducts(snap){
 
 function renderAdmin(docs){ renderOrders(docs.flatMap(d=>(d.data()?.orders)||[]), false); }
 const STATUSES=['new','confirmed','shipped','delivered','cancelled'];
+function confirmLink(o){
+  const n=String(o.phone||'').replace(/\D/g,'').replace(/^0/,'92');
+  const t=[`Assalam o Alaikum ${o.name}!`,``,`Thank you for ordering from FH – Fragrance by Huraira. Your order ${o.id} has been received:`,
+    ...(o.items||[]).map(i=>`• ${i.name} × ${i.qty}`),``,`Total: ${fmt(o.total||0)} (Cash on Delivery, incl. delivery ${fmt(o.delivery||0)})`,
+    `Address: ${o.address}, ${o.city}`,``,`Please reply YES to confirm. Delivery takes 4 to 6 working days.`].join('\n');
+  return 'https://wa.me/'+n+'?text='+encodeURIComponent(t);
+}
 let seenIds=null;
 function renderOrders(list, editable){
   const all=list.slice().sort((a,b)=>String(b.createdAt).localeCompare(String(a.createdAt)));
@@ -871,7 +917,7 @@ function renderOrders(list, editable){
   document.getElementById('stNew').textContent=all.filter(o=>o.status==='new').length;
   document.getElementById('stRev').textContent=fmt(all.reduce((a,o)=>a+(o.total||0),0));
   document.getElementById('ordRows').innerHTML= all.length ? all.map(o=>`<tr class="${fresh.has(o.id)?'fresh':''}"><td>${esc(o.id)}</td><td>${new Date(o.createdAt).toLocaleString('en-PK',{dateStyle:'medium',timeStyle:'short'})}</td>
-    <td>${esc(o.name)}<small>${esc(o.phone)}</small></td><td>${esc(o.city)}<small>${esc(o.address)}</small></td>
+    <td>${esc(o.name)}<small>${esc(o.phone)}</small>${o.email?`<small>${esc(o.email)}</small>`:''}<a class="wabtn" href="${confirmLink(o)}" target="_blank" rel="noopener">Confirm on WhatsApp</a></td><td>${esc(o.city)}<small>${esc(o.address)}</small></td>
     <td>${(o.items||[]).map(i=>`${esc(i.name)} × ${i.qty}`).join('<br>')}</td><td class="r">${fmt(o.total||0)}<small>incl. delivery ${fmt(o.delivery||0)}</small></td><td>${esc(o.payment)}</td><td>${editable?`<select class="stsel" data-oid="${esc(o._id||o.id)}" data-s="${esc(o.status)}" aria-label="Order status">${STATUSES.map(x=>`<option value="${x}"${x===o.status?' selected':''}>${x}</option>`).join('')}</select>`:`<span class="pill">${esc(o.status)}</span>`}</td></tr>`).join('')
     : '<tr><td colspan="8" class="empty">No orders yet. They will appear here as soon as someone checks out.</td></tr>';
 }
