@@ -749,7 +749,7 @@ document.addEventListener('keydown',e=>{ if(e.key==='Escape') drawer.hidden=true
 renderBag();
 
 /* delivery charges by city (editable in the database: products/shipping) */
-let SHIP={Bahawalpur:150, Multan:200, "Rahim Yar Khan":200, Bahawalnagar:200, Lodhran:200, Vehari:200, Khanewal:200, "Dera Ghazi Khan":220, Lahore:250, Faisalabad:250, Sahiwal:250, Sargodha:250, Gujranwala:270, Sialkot:270, Sukkur:270, Islamabad:300, Rawalpindi:300, Karachi:300, Hyderabad:300, Peshawar:350, Quetta:350, "Other city":350};
+let SHIP={Bahawalpur:120, Lodhran:150, Multan:220, Bahawalnagar:220, Vehari:220, Khanewal:220, "Rahim Yar Khan":260, "Dera Ghazi Khan":260, Lahore:330, Faisalabad:330, Sahiwal:330, Sargodha:330, Gujranwala:370, Sialkot:370, Sukkur:370, Islamabad:410, Rawalpindi:410, Karachi:410, Hyderabad:410, Peshawar:500, Quetta:500, "Other city":500};
 function fillCities(){
   const sel=document.getElementById('coCity'), v=sel.value;
   sel.innerHTML='<option value="">Choose your city</option>'+Object.entries(SHIP).map(([c,r])=>`<option value="${esc(c)}">${esc(c)} · delivery ${fmt(r)}</option>`).join('');
