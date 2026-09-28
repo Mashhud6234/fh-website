@@ -781,7 +781,7 @@ document.getElementById('coCity').addEventListener('change',renderSum);
 const WHATSAPP_NUMBER='923269505730';
 /* ===== Order confirmation email (EmailJS) =====
    Fill these three values from your EmailJS account to switch on confirmation emails. */
-const EMAILJS = { publicKey: null, serviceId: null, templateId: null };
+const EMAILJS = { publicKey: "DEgcZ3nNjzMiEiBBy", serviceId: "service_60y63su", templateId: "template_4ho4ati" };
 async function sendConfirmationEmail(o){
   const note=document.getElementById('doneMail');
   if(!EMAILJS.publicKey||!EMAILJS.serviceId||!EMAILJS.templateId){ if(note) note.textContent=''; return; }
@@ -844,7 +844,8 @@ document.getElementById('checkout').addEventListener('submit',async e=>{
   const email=(f.coEmail.value||'').trim();
   if(email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){ msg.textContent='Please check your email address, or leave it empty.'; f.coEmail.focus(); return; }
   if(email) order.email=email;
-  if(!db||!uid){
+  /* every copy of the site (live site and preview) saves to Firebase, else WhatsApp */
+  {
     let saved=false;
     if(FB.ready){
       btn.disabled=true; btn.textContent='Placing order…'; msg.textContent='';
@@ -859,18 +860,6 @@ document.getElementById('checkout').addEventListener('submit',async e=>{
     if(saved){ bag=[]; renderBag(); f.reset(); renderSum(); } else { pendingClear=true; }
     return;
   }
-  btn.disabled=true; btn.textContent='Placing order…'; msg.textContent='';
-  try{
-    const ref=db.doc('orders/'+uid); const snap=await ref.get();
-    const prev=snap.exists?(snap.data().orders||[]):[];
-    await ref.set({orders:[...prev,order], updatedAt:order.createdAt});
-    bag=[]; renderBag(); f.reset();
-    document.getElementById('doneId').textContent=order.id;
-    document.getElementById('donePhone').textContent=order.phone;
-    document.getElementById('donePay').textContent=`Please keep ${fmt(order.total)} ready in cash on delivery.`;
-    document.getElementById('bagMain').hidden=true; document.getElementById('done').hidden=false;
-  }catch(err){ msg.textContent= err?.code==='quota_exceeded' ? 'Our order book is full right now. Please order on WhatsApp.' : 'Your order could not be saved. Check your connection and try again.'; }
-  btn.disabled=false; renderSum();
 });
 
 document.getElementById('news').addEventListener('submit',async e=>{
@@ -1025,12 +1014,9 @@ document.getElementById('ownerLink').addEventListener('click',e=>{ if(inClaude) 
   db.collection('products').onSnapshot(applyProducts,()=>{});
   const admin=userN? await userN.canEdit().catch(()=>false) : false;
   if(admin){
-    document.getElementById('admin').hidden=false;
-    db.collection('orders').onSnapshot(s=>renderAdmin(s.docs),()=>{});
-    db.collection('subscribers').onSnapshot(s=>{
-      document.getElementById('stSubs').textContent=s.size;
-      document.getElementById('subList').textContent=s.docs.map(d=>d.data()?.email).filter(Boolean).join(', ')||'No subscribers yet.';
-    },()=>{});
+    /* the Claude preview is only a preview: real orders live in Firebase, shown on the live site's dashboard */
+    adminEl.hidden=false; bodyEl.hidden=true;
+    authEl.innerHTML='<p><b>This is only the Claude preview, not your real dashboard.</b> All real orders, from phones and computers, are on your live dashboard.</p><p style="margin-top:14px"><a class="btn solid" href="https://fragrancebyhuraira.vercel.app/#admin" target="_blank" rel="noopener">Open live dashboard</a></p><p class="hint" style="margin-top:10px">Sign in there with habu53656@gmail.com.</p>';
   }
 })();
 
